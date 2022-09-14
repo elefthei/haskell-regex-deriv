@@ -1,13 +1,29 @@
+{-# LANGUAGE UnicodeSyntax, FlexibleInstances, FlexibleContexts #-}
 module Main (main) where
 
+import Debug.Trace
 data Regex t =
     Nil
   | Bot
   | C t
-  | App (Regex t) (Regex t)
-  | Alt (Regex t) (Regex t)
-  | Star (Regex t) deriving (Eq, Show)
+  | App (Regex Char) (Regex Char)
+  | Alt (Regex Char) (Regex Char)
+  | Star (Regex Char) deriving Eq
 
+instance Show (Regex Char) where
+    show r = case r of
+              Nil -> "ε"
+              Bot -> "∅"
+              C c -> [c]
+              App a b -> show a ++ show b
+              Alt a b -> paren a ++ "|" ++ paren b
+              Star x -> paren x ++ "*"
+        where paren x = case x of
+                            Nil -> show x
+                            Bot -> show x
+                            C _ -> show x
+                            App a b -> show a ++ show b
+                            _ -> "(" ++ show x ++ ")"
 dot :: String -> Regex Char
 dot (c:xs)
     | null xs = C c
@@ -46,40 +62,47 @@ parseString alphabet inp = go (lexer inp)
           go [] (Just r) = r
           go [] Nothing = Nil
 
-nullable :: Regex t -> Bool
+nullable :: Regex Char -> Bool
 nullable Nil = True
 nullable (Star _) = True
 nullable (App a b) = nullable a && nullable b
 nullable (Alt a b) = nullable a || nullable b
 nullable _ = False
 
-deriv' :: Eq t => Regex t -> t -> Regex t
+deriv' :: Regex Char -> Char -> Regex Char
 deriv' Nil _ = Bot
 deriv' Bot _ = Bot
 deriv' (C c) x
     | c == x = Nil
     | otherwise = Bot
 deriv' (App a b) c
-    | nullable a = Alt (App (deriv' a c) b) (App a (deriv' b c))
+    | nullable a = Alt (App (deriv' a c) b) (deriv' b c)
     | otherwise = App (deriv' a c) b
 deriv' (Star r) c = App (deriv' r c) (Star r)
 deriv' (Alt a b) c = Alt (deriv' a c) (deriv' b c)
 
 -- Normalization procedure is a bit costly, see last cases
-simpl :: Eq t => Regex t -> Regex t
+simpl :: Regex Char -> Regex Char
+simpl r | trace ("simpl " ++ show r) False = undefined
 simpl r =
     case r of
         Nil -> Nil
         Bot -> Bot
         (C c) -> C c
+        -- Bot absorbs App
         (App Bot _) -> Bot
         (App _ Bot) -> Bot
+        -- Nil identity App
         (App Nil a) -> simpl a
         (App a Nil) -> simpl a
+        -- Bot identity Alt
         (Alt a Bot) -> simpl a
         (Alt Bot a) -> simpl a
+        -- Nil, Bot identity Star
         (Star Nil) -> Nil
         (Star Bot) -> Nil
+        -- distributivity_alt_star (a+b)* = a* + b*
+        (Star (Alt a b)) -> simpl $ Alt (Star a) (Star b)
         (Star a) -> if normal a then
                         Star a
                     else
@@ -92,19 +115,20 @@ simpl r =
                         if a == b then
                             a
                         else
-                            b
+                            Alt a b
                      else
                         simpl (Alt (simpl a) (simpl b))
     where normal x = simpl x == x
 
-deriv :: Eq t => Regex t -> [t] -> Regex t
+deriv :: Regex Char -> String -> Regex Char
+deriv r s | trace ("d_" ++ s ++ "(" ++ show r ++ ")") False = undefined
 deriv r (c:xs) = deriv (simpl $ deriv' r c) xs
 deriv r [] = r
 
 main :: IO ()
 main = do
-    putStrLn "Give alphabet"
-    sigma <- getLine
+    -- putStrLn "Give alphabet"
+    let sigma = "ab"
     putStrLn "Give regex"
     r <- getLine
     putStrLn "Give document"
