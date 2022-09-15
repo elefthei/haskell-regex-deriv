@@ -68,6 +68,7 @@ parseRegexp alphabet inp = go (lexer inp)
             | x `elem` alphabet = App r . go xs . Just . C $ x
             | x == '.' = App r . go xs . Just . dot $ alphabet
             | x == '*' = go xs . Just . Star $ r
+            | x == '+' = go xs . Just . App r . Star $ r
             | otherwise = error $ "Character " ++ show x ++ " not in alphabet " ++ show alphabet
           go (str:cs) (Just r) =
             let inner = parseRegexp alphabet str Nothing in
@@ -176,4 +177,4 @@ main = do
         case getOpt Permute options argv of
             (o,_,[]) -> return $ extract o
             (_,_,errs) -> ioError (userError (concat errs ++ usageInfo usage options))
-    print $ deriv r d
+    putStrLn $ if nullable (deriv r d) then "MATCH" else "NON-MATCH"
