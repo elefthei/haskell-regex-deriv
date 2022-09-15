@@ -1,7 +1,22 @@
 {-# LANGUAGE UnicodeSyntax, FlexibleInstances, FlexibleContexts #-}
+{-# OPTIONS_GHC -Wno-name-shadowing #-}
 module Main (main) where
 
 import Debug.Trace
+import System.Environment
+import System.Console.GetOpt
+
+-- CMD arguments parser
+data Flag = Alphabet String | Regx String | Doc String
+  deriving Show
+
+options :: [OptDescr Flag]
+options =
+    [ Option ['a']     ["alphabet"] (ReqArg Alphabet "ab")  "alphabet to use"
+    , Option ['r']     ["regex"]    (ReqArg Regx "regex")   "regular expression"
+    , Option ['d']     ["doc"]      (ReqArg Doc "document") "document"
+    ]
+
 data Regex t =
     Nil
   | Bot
@@ -24,6 +39,7 @@ instance Show (Regex Char) where
                             C _ -> show x
                             App a b -> show a ++ show b
                             _ -> "(" ++ show x ++ ")"
+
 dot :: String -> Regex Char
 dot (c:xs)
     | null xs = C c
@@ -39,28 +55,34 @@ lexer (x:xs)
     | otherwise = [x] : lexer xs
 lexer [] = []
 
-parseString :: String -> String -> Maybe (Regex Char) -> Regex Char
-parseString alphabet inp = go (lexer inp)
+parseRegexp :: String -> String -> Maybe (Regex Char) -> Regex Char
+parseRegexp alphabet inp = go (lexer inp)
     where go (['|']:x:xs) (Just r) =
-            let alt = Alt r (parseString alphabet x Nothing) in
+            let alt = Alt r (parseRegexp alphabet x Nothing) in
             go xs (Just alt)
           go ([x]:xs) Nothing
             | x `elem` alphabet = go xs . Just . C $ x
             | x == '.' = go xs . Just . dot $ alphabet
-            | otherwise = error $ "Cannot parse character " ++ show x
+            | otherwise = error $ "Character " ++ show x ++ " not in alphabet " ++ show alphabet
           go ([x]:xs) (Just r)
             | x `elem` alphabet = App r . go xs . Just . C $ x
             | x == '.' = App r . go xs . Just . dot $ alphabet
             | x == '*' = go xs . Just . Star $ r
-            | otherwise = error $ "Cannot parse character " ++ show x
+            | otherwise = error $ "Character " ++ show x ++ " not in alphabet " ++ show alphabet
           go (str:cs) (Just r) =
-            let inner = parseString alphabet str Nothing in
+            let inner = parseRegexp alphabet str Nothing in
             App r . go cs . Just $ inner
           go (str:cs) Nothing =
-            let inner = parseString alphabet str Nothing in
+            let inner = parseRegexp alphabet str Nothing in
             go cs . Just $ inner
           go [] (Just r) = r
           go [] Nothing = Nil
+
+parseString :: String -> String -> String
+parseString alphabet (x:xs)
+    | x `elem` alphabet = x:parseString alphabet xs
+    | otherwise = error $ "Character " ++ show x ++ " not in alphabet " ++ show alphabet
+parseString _ [] = []
 
 nullable :: Regex Char -> Bool
 nullable Nil = True
@@ -83,7 +105,7 @@ deriv' (Alt a b) c = Alt (deriv' a c) (deriv' b c)
 
 -- Normalization procedure is a bit costly, see last cases
 simpl :: Regex Char -> Regex Char
-simpl r | trace ("simpl " ++ show r) False = undefined
+simpl r | trace ("  simpl " ++ show r) False = undefined
 simpl r =
     case r of
         Nil -> Nil
@@ -121,16 +143,37 @@ simpl r =
     where normal x = simpl x == x
 
 deriv :: Regex Char -> String -> Regex Char
-deriv r s | trace ("d_" ++ s ++ "(" ++ show r ++ ")") False = undefined
+deriv r s | trace ("∂_" ++ s ++ "(" ++ show r ++ ")") False = undefined
 deriv r (c:xs) = deriv (simpl $ deriv' r c) xs
 deriv r [] = r
 
+usage :: String
+usage = "Usage: exe --alphabet \"abcd\" --regex \"ab*\" --doc \"abbbbbb\""
+
+-- From flags get (regex * input)
+extract :: [Flag] -> (Regex Char, String)
+extract x = case (filterMap getAlphabet x, filterMap getRegex x, filterMap getDocument x) of
+                (Just a, Just b, Just c) -> (parseRegexp a b Nothing, parseString a c)
+                (Nothing,_,_) -> error $ "Error: Missing --alphabet\n\t" ++ usage ++ "\n"
+                (_,Nothing,_) -> error $ "Error: Missing --regex\n\t" ++ usage ++ "\n"
+                (_,_,Nothing) -> error $ "Error: Missing --doc\n\t" ++ usage ++ "\n"
+    where
+        filterMap f (y:xs) = case f y of
+                        Just x -> Just x
+                        Nothing -> filterMap f xs
+        filterMap _ [] = Nothing
+        getAlphabet (Alphabet s) = Just s
+        getAlphabet _ = Nothing
+        getRegex (Regx s) = Just s
+        getRegex _ = Nothing
+        getDocument (Doc s) = Just s
+        getDocument _ = Nothing
+
 main :: IO ()
 main = do
-    -- putStrLn "Give alphabet"
-    let sigma = "ab"
-    putStrLn "Give regex"
-    r <- getLine
-    putStrLn "Give document"
-    d <- getLine
-    print $ deriv (parseString sigma r Nothing) d
+    argv <- getArgs
+    (r, d) <-
+        case getOpt Permute options argv of
+            (o,_,[]) -> return $ extract o
+            (_,_,errs) -> ioError (userError (concat errs ++ usageInfo usage options))
+    print $ deriv r d
