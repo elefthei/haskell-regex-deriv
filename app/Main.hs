@@ -102,10 +102,9 @@ main = do
     putStrLn "Brzowski derivative"
     putStrLn $ if nullable (deriv r d) then "MATCH" else "NON-MATCH"
     putStrLn "Closure of derivative over alphabet"
-    let (clo, mat) = transmat r ab
+    let (clo, adj) = adjmat r ab
     let nstates = L.length clo
     print clo
-    let (_, adj) = adjmat r ab
     putStrLn "Adjacency matrices for each letter (indices)"
     putStrLn . unlines . map (\(a,b) -> "M(" ++ show a ++ ") = " ++ "\n" ++ show b) $ adj
 
@@ -115,7 +114,3 @@ main = do
     print adjProd
     putStrLn $ "Match if M(1, " ++ show nstates ++ ") = 1"
     putStrLn $ "M(1, " ++ show nstates ++ ") = " ++ show (M.unsafeGet 1 nstates adjProd)
-    putStrLn "Transition matrix (indices)"
-    print mat
-    putStrLn "Transition matrix (regex)"
-    print $ transmatRegex r ab
