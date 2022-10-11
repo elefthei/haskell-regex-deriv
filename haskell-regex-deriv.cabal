@@ -25,16 +25,18 @@ source-repository head
 
 library
   exposed-modules:
+      Antimirov
+      Brzowski
       Lib
   other-modules:
       Paths_haskell_regex_deriv
   hs-source-dirs:
       src
-  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
+  ghc-options: -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-name-shadowing
   build-depends:
       base >=4.7 && <5
-    , mtl
-    , parsec
+    , containers
+    , matrix
     , text
   default-language: Haskell2010
 
@@ -44,12 +46,12 @@ executable haskell-regex-deriv-exe
       Paths_haskell_regex_deriv
   hs-source-dirs:
       app
-  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-name-shadowing -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
+    , containers
     , haskell-regex-deriv
-    , mtl
-    , parsec
+    , matrix
     , text
   default-language: Haskell2010
 
@@ -60,11 +62,11 @@ test-suite haskell-regex-deriv-test
       Paths_haskell_regex_deriv
   hs-source-dirs:
       test
-  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -Wno-name-shadowing -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
+    , containers
     , haskell-regex-deriv
-    , mtl
-    , parsec
+    , matrix
     , text
   default-language: Haskell2010

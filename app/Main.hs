@@ -1,10 +1,14 @@
 {-# LANGUAGE UnicodeSyntax, FlexibleInstances, FlexibleContexts #-}
-{-# OPTIONS_GHC -Wno-name-shadowing #-}
 module Main (main) where
 
-import Debug.Trace
 import System.Environment
 import System.Console.GetOpt
+
+import qualified Data.Matrix as M
+import qualified Data.List as L
+
+import qualified Antimirov as A
+import Brzowski
 
 -- CMD arguments parser
 data Flag = Alphabet String | Regx String | Doc String
@@ -17,28 +21,11 @@ options =
     , Option ['d']     ["doc"]      (ReqArg Doc "document") "document"
     ]
 
-data Regex t =
-    Nil
-  | Bot
-  | C t
-  | App (Regex Char) (Regex Char)
-  | Alt (Regex Char) (Regex Char)
-  | Star (Regex Char) deriving Eq
-
-instance Show (Regex Char) where
-    show r = case r of
-              Nil -> "ε"
-              Bot -> "∅"
-              C c -> [c]
-              App a b -> show a ++ show b
-              Alt a b -> paren a ++ "|" ++ paren b
-              Star x -> paren x ++ "*"
-        where paren x = case x of
-                            Nil -> show x
-                            Bot -> show x
-                            C _ -> show x
-                            App a b -> show a ++ show b
-                            _ -> "(" ++ show x ++ ")"
+parseString :: String -> String -> String
+parseString alphabet (x:xs)
+    | x `elem` alphabet = x:parseString alphabet xs
+    | otherwise = error $ "Character " ++ show x ++ " not in alphabet " ++ show alphabet
+parseString _ [] = []
 
 dot :: String -> Regex Char
 dot (c:xs)
@@ -79,82 +66,13 @@ parseRegexp alphabet inp = go (lexer inp)
           go [] (Just r) = r
           go [] Nothing = Nil
 
-parseString :: String -> String -> String
-parseString alphabet (x:xs)
-    | x `elem` alphabet = x:parseString alphabet xs
-    | otherwise = error $ "Character " ++ show x ++ " not in alphabet " ++ show alphabet
-parseString _ [] = []
-
-nullable :: Regex Char -> Bool
-nullable Nil = True
-nullable (Star _) = True
-nullable (App a b) = nullable a && nullable b
-nullable (Alt a b) = nullable a || nullable b
-nullable _ = False
-
-deriv' :: Regex Char -> Char -> Regex Char
-deriv' Nil _ = Bot
-deriv' Bot _ = Bot
-deriv' (C c) x
-    | c == x = Nil
-    | otherwise = Bot
-deriv' (App a b) c
-    | nullable a = Alt (App (deriv' a c) b) (deriv' b c)
-    | otherwise = App (deriv' a c) b
-deriv' (Star r) c = App (deriv' r c) (Star r)
-deriv' (Alt a b) c = Alt (deriv' a c) (deriv' b c)
-
--- Normalization procedure is a bit costly, see last cases
-simpl :: Regex Char -> Regex Char
-simpl r | trace ("  simpl " ++ show r) False = undefined
-simpl r =
-    case r of
-        Nil -> Nil
-        Bot -> Bot
-        (C c) -> C c
-        -- Bot absorbs App
-        (App Bot _) -> Bot
-        (App _ Bot) -> Bot
-        -- Nil identity App
-        (App Nil a) -> simpl a
-        (App a Nil) -> simpl a
-        -- Bot identity Alt
-        (Alt a Bot) -> simpl a
-        (Alt Bot a) -> simpl a
-        -- Nil, Bot identity Star
-        (Star Nil) -> Nil
-        (Star Bot) -> Nil
-        -- distributivity_alt_star (a+b)* = a* + b*
-        (Star (Alt a b)) -> simpl $ Alt (Star a) (Star b)
-        (Star a) -> if normal a then
-                        Star a
-                    else
-                        Star (simpl a)
-        (App a b) -> if normal a && normal b then
-                        App a b
-                     else
-                        simpl (App (simpl a) (simpl b))
-        (Alt a b) -> if normal a && normal b then
-                        if a == b then
-                            a
-                        else
-                            Alt a b
-                     else
-                        simpl (Alt (simpl a) (simpl b))
-    where normal x = simpl x == x
-
-deriv :: Regex Char -> String -> Regex Char
-deriv r s | trace ("∂_" ++ s ++ "(" ++ show r ++ ")") False = undefined
-deriv r (c:xs) = deriv (simpl $ deriv' r c) xs
-deriv r [] = r
-
 usage :: String
 usage = "Usage: exe --alphabet \"abcd\" --regex \"ab*\" --doc \"abbbbbb\""
 
 -- From flags get (regex * input)
-extract :: [Flag] -> (Regex Char, String)
+extract :: [Flag] -> (String, Regex Char, String)
 extract x = case (filterMap getAlphabet x, filterMap getRegex x, filterMap getDocument x) of
-                (Just a, Just b, Just c) -> (parseRegexp a b Nothing, parseString a c)
+                (Just a, Just b, Just c) -> (a, parseRegexp a b Nothing, parseString a c)
                 (Nothing,_,_) -> error $ "Error: Missing --alphabet\n\t" ++ usage ++ "\n"
                 (_,Nothing,_) -> error $ "Error: Missing --regex\n\t" ++ usage ++ "\n"
                 (_,_,Nothing) -> error $ "Error: Missing --doc\n\t" ++ usage ++ "\n"
@@ -173,8 +91,31 @@ extract x = case (filterMap getAlphabet x, filterMap getRegex x, filterMap getDo
 main :: IO ()
 main = do
     argv <- getArgs
-    (r, d) <-
+    (ab, r, d) <-
         case getOpt Permute options argv of
             (o,_,[]) -> return $ extract o
             (_,_,errs) -> ioError (userError (concat errs ++ usageInfo usage options))
+    -- Antimirov
+    -- putStrLn "Antimirov derivative"
+    -- putStrLn $ if A.nullable (A.deriv (A.toLf r) d) then "MATCH" else "NON-MATCH"
+    -- Brzowski
+    putStrLn "Brzowski derivative"
     putStrLn $ if nullable (deriv r d) then "MATCH" else "NON-MATCH"
+    putStrLn "Closure of derivative over alphabet"
+    let (clo, mat) = transmat r ab
+    let nstates = L.length clo
+    print clo
+    let (_, adj) = adjmat r ab
+    putStrLn "Adjacency matrices for each letter (indices)"
+    putStrLn . unlines . map (\(a,b) -> "M(" ++ show a ++ ") = " ++ "\n" ++ show b) $ adj
+
+    -- Compute product over d
+    putStrLn $ L.foldl (\acc a -> acc ++ " * M(" ++ show a ++ ")") ("M(" ++ show d ++ ") := I") d ++ " = "
+    let adjProd = L.foldl (\acc a -> let (Just m) = L.lookup a adj in acc * m) (M.identity nstates) d
+    print adjProd
+    putStrLn $ "Match if M(1, " ++ show nstates ++ ") = 1"
+    putStrLn $ "M(1, " ++ show nstates ++ ") = " ++ show (M.unsafeGet 1 nstates adjProd)
+    putStrLn "Transition matrix (indices)"
+    print mat
+    putStrLn "Transition matrix (regex)"
+    print $ transmatRegex r ab
