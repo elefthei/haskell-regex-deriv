@@ -102,7 +102,7 @@ main = do
     putStrLn "Brzowski derivative"
     putStrLn $ if nullable (deriv r d) then "MATCH" else "NON-MATCH"
     putStrLn "Closure of derivative over alphabet"
-    let (clo, adj) = adjmat r ab
+    let (init_state, final_state, clo, adj) = adjmat r ab
     let nstates = L.length clo
     print clo
     putStrLn "Adjacency matrices for each letter (indices)"
@@ -112,5 +112,5 @@ main = do
     putStrLn $ L.foldl (\acc a -> acc ++ " * M(" ++ show a ++ ")") ("M(" ++ show d ++ ") := I") d ++ " = "
     let adjProd = L.foldl (\acc a -> let (Just m) = L.lookup a adj in acc * m) (M.identity nstates) d
     print adjProd
-    putStrLn $ "Match if M(1, " ++ show nstates ++ ") = 1"
-    putStrLn $ "M(1, " ++ show nstates ++ ") = " ++ show (M.unsafeGet 1 nstates adjProd)
+    putStrLn $ "Match if M(" ++ show init_state ++ ", " ++ show final_state ++ ") = "
+        ++ show (M.unsafeGet init_state final_state adjProd)

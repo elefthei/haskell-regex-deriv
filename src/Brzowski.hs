@@ -106,11 +106,13 @@ dclosure r alphabet s = L.foldl (\acc c ->
         acc `S.union` dclosure dr alphabet (S.insert dr acc)
     ) (S.insert r s) alphabet
 
-adjmat :: Regex Char -> [Char] -> ([Regex Char], [(Char, Matrix Int)])
+adjmat :: Regex Char -> [Char] -> (Int, Int, [Regex Char], [(Char, Matrix Int)])
 adjmat r alphabet =
     -- Derivative closure associative list
     let dcas = L.reverse (S.toList (dclosure r alphabet S.empty)) in
-    (dcas, do
+    let Just init = L.elemIndex r dcas in
+    let Just final = L.elemIndex Nil dcas in
+    (init+1, final+1, dcas, do
         c <- alphabet
         return (c, M.matrix
             (L.length dcas)
