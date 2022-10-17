@@ -2,6 +2,7 @@
 module Brzowski (deriv, Regex(..), nullable, adjmat) where
 
 import Debug.Trace
+import System.IO.Unsafe
 
 import Data.Set (Set)
 import Data.Matrix (Matrix)
@@ -54,6 +55,12 @@ deriv' (App a b) c
 deriv' (Star r) c = App (deriv' r c) (Star r)
 deriv' (Alt a b) c = Alt (deriv' a c) (deriv' b c)
 
+derive :: Regex Char -> Char -> Regex Char
+derive r c = unsafePerformIO $ do
+    let res = simpl (deriv' r c)
+    print ("∂_" ++ [c] ++ "(" ++ show r ++ ") = " ++ show res)
+    return res
+
 -- Normalization procedure is a bit costly, see last cases
 simpl :: Regex Char -> Regex Char
 -- simpl r | trace ("  simpl " ++ show r) False = undefined
@@ -75,15 +82,15 @@ simpl r =
         (Star Nil) -> Nil
         (Star Bot) -> Nil
         -- distributivity_alt_star (a+b)* = a* + b*
-        (Star (Alt a b)) -> simpl $ Alt (Star a) (Star b)
+        (Star (Alt a b)) -> simpl $ sort Alt (Star a) (Star b)
         (Star a) -> if normal a then
                         Star a
                     else
                         Star (simpl a)
         (App a b) -> if normal a && normal b then
-                        sort App a b
+                        App a b
                      else
-                        simpl (sort App (simpl a) (simpl b))
+                        simpl (App (simpl a) (simpl b))
         (Alt a b) -> if normal a && normal b then
                         if a == b then
                             a
@@ -96,20 +103,26 @@ simpl r =
             | a > b = f a b
             | otherwise = f b a
 
+rset :: Regex Char -> Set (Regex Char)
+rset (Alt a b) = S.fromList [Alt a b, a, b]
+rset (Star a) = S.fromList [Star a, a, Nil]
+rset o = S.singleton o -- Maybe I need to close rset here, but what about simpl?
+
 -- Find the transitive closure of derivatives over alphabet
 dclosure :: Regex Char -> [Char] -> Set (Regex Char) -> Set (Regex Char)
 dclosure r alphabet s = L.foldl (\acc c ->
-    let dr = simpl (deriv' r c) in
-    if S.member dr acc then
-        acc
-    else
-        acc `S.union` dclosure dr alphabet (S.insert dr acc)
+    let ds = rset (derive r c) in
+    L.foldl (\acc dr ->
+        if S.member dr acc then
+            acc
+        else
+            dclosure dr alphabet acc) acc ds
     ) (S.insert r s) alphabet
 
 adjmat :: Regex Char -> [Char] -> (Int, Int, [Regex Char], [(Char, Matrix Int)])
 adjmat r alphabet =
     -- Derivative closure associative list
-    let dcas = L.reverse (S.toList (dclosure r alphabet S.empty)) in
+    let dcas = L.reverse (S.toList $ dclosure r alphabet S.empty) in
     let Just init = L.elemIndex r dcas in
     let Just final = L.elemIndex Nil dcas in
     (init+1, final+1, dcas, do
@@ -119,12 +132,10 @@ adjmat r alphabet =
             (L.length dcas)
             (\(i,j) -> let r = dcas !! (i-1) in
                        let r' = dcas !! (j-1) in
-                       if simpl (deriv' r c) == r' then
+                       if r' `S.member` rset (simpl (deriv' r c)) then
                            1
                        else
                            0)))
 
 deriv :: Regex Char -> String -> Regex Char
-deriv r s | trace ("∂_" ++ s ++ "(" ++ show r ++ ")") False = undefined
-deriv r (c:xs) = deriv (simpl $ deriv' r c) xs
-deriv r [] = r
+deriv = foldl derive
